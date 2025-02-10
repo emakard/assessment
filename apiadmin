@@ -1,0 +1,146 @@
+    import React, { useState, useEffect } from 'react';
+    import { Card, CardContent } from '@/components/ui/card';
+    import { Info, ChevronRight, ChevronDown } from 'lucide-react';
+    import axios from 'axios';
+
+    const API_BASE_URL = "http://ema-assessment-env.eba-stgwv83j.ap-south-1.elasticbeanstalk.com/api";
+
+    const AssessmentVisualization = () => {
+    const [categories, setCategories] = useState({});
+    const [selectedNode, setSelectedNode] = useState(null);
+    const [expandedNodes, setExpandedNodes] = useState(new Set());
+    const [questions, setQuestions] = useState({});
+
+    useEffect(() => {
+        fetchCategories();
+    }, []);
+
+    const fetchCategories = async () => {
+        try {
+        const response = await axios.get(`${API_BASE_URL}/categories`);
+        const categoriesData = response.data;
+        const categoryMap = {};
+        
+        categoriesData.forEach(category => {
+            categoryMap[category.code] = {
+            id: category.code,
+            label: category.name,
+            type: category.type,
+            children: []
+            };
+        });
+
+        categoriesData.forEach(category => {
+            if (category.parent_code && categoryMap[category.parent_code]) {
+            categoryMap[category.parent_code].children.push(category.code);
+            }
+        });
+        
+        setCategories(categoryMap);
+        } catch (error) {
+        console.error("Error fetching categories:", error);
+        }
+    };
+
+    const fetchQuestions = async (categoryId) => {
+        try {
+        const response = await axios.get(`${API_BASE_URL}/categories/${categoryId}/questions`);
+        setQuestions(prev => ({ ...prev, [categoryId]: response.data }));
+        } catch (error) {
+        console.error("Error fetching questions:", error);
+        }
+    };
+
+    const handleNodeClick = (nodeId) => {
+        setSelectedNode(nodeId);
+        if (!questions[nodeId]) {
+        fetchQuestions(nodeId);
+        }
+    };
+
+    const toggleExpand = (nodeId) => {
+        const newExpanded = new Set(expandedNodes);
+        if (newExpanded.has(nodeId)) {
+        newExpanded.delete(nodeId);
+        } else {
+        newExpanded.add(nodeId);
+        }
+        setExpandedNodes(newExpanded);
+    };
+
+    const renderNode = (nodeId, level = 0) => {
+        const node = categories[nodeId];
+        if (!node) return null;
+
+        const hasChildren = node.children && node.children.length > 0;
+        const isExpanded = expandedNodes.has(nodeId);
+        const isSelected = selectedNode === nodeId;
+
+        return (
+        <div key={nodeId} className="mb-2">
+            <div 
+            className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
+                isSelected ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-gray-100'
+            }`}
+            style={{ marginLeft: `${level * 20}px` }}
+            >
+            {hasChildren && (
+                <button
+                onClick={() => toggleExpand(nodeId)}
+                className="mr-2 p-1 hover:bg-gray-200 rounded"
+                >
+                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+            )}
+            <div onClick={() => handleNodeClick(nodeId)} className="flex-1 flex items-center">
+                <span className="font-medium">{node.label}</span>
+                {node.type === "terminal" && <Info size={16} className="ml-2 text-gray-500" />}
+            </div>
+            </div>
+            {isExpanded && hasChildren && (
+            <div className="ml-4">
+                {node.children.map(childId => renderNode(childId, level + 1))}
+            </div>
+            )}
+        </div>
+        );
+    };
+
+    const renderQuestions = () => {
+        if (!selectedNode || !questions[selectedNode]) return null;
+
+        return (
+        <Card className="mt-4">
+            <CardContent className="p-4">
+            <h3 className="text-lg font-semibold mb-3">Assessment Questions</h3>
+            <ul className="space-y-3">
+                {questions[selectedNode].map((question, index) => (
+                <li key={index} className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>{question.text}</span>
+                </li>
+                ))}
+            </ul>
+            </CardContent>
+        </Card>
+        );
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto p-6">
+        <h2 className="text-2xl font-bold mb-6">Site Assessment Categories</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-lg shadow p-4">
+            <div className="overflow-y-auto max-h-[600px]">
+                {Object.keys(categories).length > 0 ? renderNode(Object.keys(categories)[0]) : <p>Loading categories...</p>}
+            </div>
+            </div>
+            <div>
+            {renderQuestions()}
+            </div>
+        </div>
+        </div>
+    );
+    };
+
+    export default AssessmentVisualization;
